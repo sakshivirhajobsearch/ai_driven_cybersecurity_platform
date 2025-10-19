@@ -1,194 +1,168 @@
 # dashboard/dashboard.py
-
-import dash
-from dash import dcc, html
-from dash.dependencies import Input, Output
-import plotly.express as px
+import tkinter as tk
+from tkinter import ttk, messagebox
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 import mysql.connector
-import datetime
+from mysql.connector import Error
 
 # ===============================
-# DASHBOARD CONFIG
+# CONFIGURATION
 # ===============================
-DASHBOARD_PORT = 8051
-REFRESH_INTERVAL_MS = 60000  # 60 seconds
-
-# ===============================
-# DATABASE CONNECTION SETTINGS
-# ===============================
+REFRESH_INTERVAL_MS = 60000  # 1 minute
 LOCAL_DB_CONFIG = {
     'host': 'localhost',
-    'user': 'root',
-    'password': 'rootpass',
-    'database': 'cybersec_local'
+    'user': 'root',         # Replace with your MySQL user
+    'password': 'admin', # Replace with your MySQL password
+    'database': 'ai_driven_cybersecurity_platform_local'
 }
 
 # ===============================
-# DATABASE QUERY FUNCTIONS
+# DATABASE FUNCTIONS
 # ===============================
-def get_event_data():
+def fetch_data(query, columns):
     try:
         conn = mysql.connector.connect(**LOCAL_DB_CONFIG)
-        query = """
-            SELECT event_type, threat_category, COUNT(*) AS count
-            FROM events
-            GROUP BY event_type, threat_category
-        """
         df = pd.read_sql(query, conn)
         conn.close()
         return df
-    except Exception as e:
-        print(f"Error fetching event data: {e}")
-        return pd.DataFrame(columns=['event_type', 'threat_category', 'count'])
+    except Error as e:
+        print(f"Database error: {e}")
+        return pd.DataFrame(columns=columns)
 
-def get_action_data():
-    try:
-        conn = mysql.connector.connect(**LOCAL_DB_CONFIG)
-        query = """
-            SELECT action_taken, COUNT(*) AS count
-            FROM actions
-            GROUP BY action_taken
-        """
-        df = pd.read_sql(query, conn)
-        conn.close()
-        return df
-    except Exception as e:
-        print(f"Error fetching action data: {e}")
-        return pd.DataFrame(columns=['action_taken', 'count'])
+def get_event_data():
+    query = """
+        SELECT event_type, threat_category, COUNT(*) AS count
+        FROM events
+        GROUP BY event_type, threat_category
+    """
+    return fetch_data(query, ['event_type', 'threat_category', 'count'])
 
 def get_risk_score_data():
-    try:
-        conn = mysql.connector.connect(**LOCAL_DB_CONFIG)
-        query = """
-            SELECT DATE_FORMAT(timestamp, '%Y-%m-%d %H:00:00') AS hour, AVG(risk_score) AS avg_risk
-            FROM events
-            GROUP BY hour
-            ORDER BY hour ASC
-        """
-        df = pd.read_sql(query, conn)
-        conn.close()
-        return df
-    except Exception as e:
-        print(f"Error fetching risk score data: {e}")
-        return pd.DataFrame(columns=['hour', 'avg_risk'])
+    query = "SELECT AVG(risk_score) AS avg_risk FROM events"
+    return fetch_data(query, ['avg_risk'])
 
 def get_latest_alerts(limit=10):
-    try:
-        conn = mysql.connector.connect(**LOCAL_DB_CONFIG)
-        query = f"""
-            SELECT timestamp, event_type, threat_category, risk_score, alert_sent
-            FROM events
-            ORDER BY timestamp DESC
-            LIMIT {limit}
-        """
-        df = pd.read_sql(query, conn)
-        conn.close()
-        return df
-    except Exception as e:
-        print(f"Error fetching alerts: {e}")
-        return pd.DataFrame(columns=['timestamp','event_type','threat_category','risk_score','alert_sent'])
+    query = f"""
+        SELECT timestamp, event_type, threat_category, risk_score, alert_sent
+        FROM events
+        ORDER BY timestamp DESC
+        LIMIT {limit}
+    """
+    return fetch_data(query, ['timestamp','event_type','threat_category','risk_score','alert_sent'])
 
 # ===============================
-# DASH APP INITIALIZATION
+# DASHBOARD CLASS
 # ===============================
-app = dash.Dash(__name__)
-app.title = "SOC Cybersecurity Dashboard"
+class CyberDashboard(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("SOC Cybersecurity Dashboard")
+        self.geometry("1000x700")
 
-# ===============================
-# DASH LAYOUT
-# ===============================
-app.layout = html.Div([
-    html.H1("SOC Cybersecurity Dashboard", style={'textAlign': 'center'}),
-    
-    # Charts
-    html.Div([
-        html.Div([
-            dcc.Graph(id='event-chart')
-        ], style={'width': '49%', 'display': 'inline-block'}),
-        html.Div([
-            dcc.Graph(id='action-chart')
-        ], style={'width': '49%', 'display': 'inline-block'})
-    ]),
-    
-    html.Div([
-        dcc.Graph(id='risk-chart')
-    ]),
-    
-    # Latest alerts table
-    html.Div([
-        html.H2("Latest Alerts", style={'textAlign': 'center'}),
-        html.Div(id='alerts-table')
-    ]),
-    
-    # Auto-refresh interval
-    dcc.Interval(
-        id='interval-component',
-        interval=REFRESH_INTERVAL_MS,  # milliseconds
-        n_intervals=0
-    )
-])
+        # --- Risk Score ---
+        self.risk_label = tk.Label(self, text="Avg Risk: N/A", font=("Helvetica", 36, "bold"), fg="red")
+        self.risk_label.pack(pady=10)
 
-# ===============================
-# CALLBACKS FOR LIVE UPDATES
-# ===============================
-@app.callback(
-    Output('event-chart', 'figure'),
-    Output('action-chart', 'figure'),
-    Output('risk-chart', 'figure'),
-    Output('alerts-table', 'children'),
-    Input('interval-component', 'n_intervals')
-)
-def update_dashboard(n):
-    # --- Events chart ---
-    event_df = get_event_data()
-    if not event_df.empty:
-        event_fig = px.bar(
-            event_df, x='event_type', y='count', color='threat_category',
-            title='Detected Cybersecurity Events (Internal vs External)',
-            labels={'count': 'Number of Events', 'event_type': 'Event Type', 'threat_category':'Threat Category'}
-        )
-    else:
-        event_fig = px.bar(title='No event data available')
+        # --- Threat Chart ---
+        self.chart_frame = tk.Frame(self)
+        self.chart_frame.pack(fill=tk.BOTH, expand=True)
+        self.fig, self.ax = plt.subplots(figsize=(10,5))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-    # --- Actions chart ---
-    action_df = get_action_data()
-    if not action_df.empty:
-        action_fig = px.pie(
-            action_df, names='action_taken', values='count',
-            title='Actions Taken'
-        )
-    else:
-        action_fig = px.pie(title='No action data available')
+        # --- Latest Alerts Table ---
+        self.table_frame = tk.Frame(self)
+        self.table_frame.pack(fill=tk.X, pady=10)
+        self.tree = ttk.Treeview(self.table_frame)
+        self.tree.pack(fill=tk.X)
+        self.columns = ['timestamp','event_type','threat_category','risk_score','alert_sent']
+        self.tree["columns"] = self.columns
+        for col in self.columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=160, anchor='center')
+        self.tree["show"] = "headings"
 
-    # --- Risk score chart ---
-    risk_df = get_risk_score_data()
-    if not risk_df.empty:
-        risk_fig = px.line(
-            risk_df, x='hour', y='avg_risk',
-            title='Average Risk Score Over Time',
-            labels={'hour':'Hour', 'avg_risk':'Average Risk Score'}
-        )
-    else:
-        risk_fig = px.line(title='No risk score data available')
+        # Define tag styles for risk severity
+        self.tree.tag_configure('high', background='#ff4d4d')    # red
+        self.tree.tag_configure('medium', background='#fff066')  # yellow
+        self.tree.tag_configure('low', background='#66ff66')     # green
 
-    # --- Latest alerts table ---
-    alerts_df = get_latest_alerts(limit=10)
-    if not alerts_df.empty:
-        table_header = [
-            html.Thead(html.Tr([html.Th(col) for col in alerts_df.columns]))
-        ]
-        table_body = [html.Tr([html.Td(alerts_df.iloc[i][col]) for col in alerts_df.columns]) for i in range(len(alerts_df))]
-        table = html.Table(table_header + [html.Tbody(table_body)], style={'width':'100%', 'border':'1px solid black','borderCollapse':'collapse'})
-    else:
-        table = html.Div("No alerts available.")
+        # Start updating dashboard
+        self.update_dashboard()
 
-    return event_fig, action_fig, risk_fig, table
+    def update_dashboard(self):
+        # --- Update Risk Score ---
+        risk_df = get_risk_score_data()
+        if not risk_df.empty and pd.notna(risk_df['avg_risk'][0]):
+            avg_risk = round(risk_df['avg_risk'][0], 2)
+            self.risk_label.config(text=f"Avg Risk: {avg_risk}")
+        else:
+            self.risk_label.config(text="Avg Risk: N/A")
+
+        # --- Update Threat Chart ---
+        event_df = get_event_data()
+        self.ax.clear()
+        if not event_df.empty:
+            categories = event_df['threat_category'].unique()
+            bar_width = 0.3
+            event_types = sorted(event_df['event_type'].unique())
+            x_positions = range(len(event_types))
+            offsets = [-bar_width/2, bar_width/2] if len(categories)==2 else [0]*len(categories)
+            event_type_to_pos = {etype: i for i, etype in enumerate(event_types)}
+
+            for i, cat in enumerate(categories):
+                subset = event_df[event_df['threat_category'] == cat]
+                positions = [event_type_to_pos[etype] + offsets[i] for etype in subset['event_type']]
+                self.ax.bar(positions, subset['count'], width=bar_width, label=cat)
+
+            self.ax.set_xticks(list(event_type_to_pos.values()))
+            self.ax.set_xticklabels(list(event_type_to_pos.keys()), fontsize=14)
+            self.ax.set_title("Internal vs External Threats", fontsize=20, fontweight='bold')
+            self.ax.set_ylabel("Count", fontsize=16)
+            self.ax.tick_params(axis='y', labelsize=14)
+            self.ax.legend(fontsize=14)
+        else:
+            self.ax.text(0.5, 0.5, 'No event data', ha='center', va='center', fontsize=16)
+        self.canvas.draw()
+
+        # --- Update Latest Alerts Table ---
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        alerts_df = get_latest_alerts(limit=10)
+        if not alerts_df.empty:
+            for _, row in alerts_df.iterrows():
+                # Determine severity tag
+                try:
+                    risk = float(row['risk_score'])
+                except:
+                    risk = 0
+                if risk >= 7:
+                    tag = 'high'
+                elif risk >= 4:
+                    tag = 'medium'
+                else:
+                    tag = 'low'
+                self.tree.insert("", tk.END, values=(
+                    row['timestamp'], row['event_type'], row['threat_category'], row['risk_score'], row['alert_sent']
+                ), tags=(tag,))
+
+        # Schedule next update
+        self.after(REFRESH_INTERVAL_MS, self.update_dashboard)
 
 # ===============================
 # RUN DASHBOARD
 # ===============================
-if __name__ == '__main__':
-    print(f"Dashboard running locally at http://127.0.0.1:{DASHBOARD_PORT}")
-    print(f"Dashboard running on LAN at http://192.168.29.206:{DASHBOARD_PORT}")
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+if __name__ == "__main__":
+    # Test DB connection first
+    try:
+        conn_test = mysql.connector.connect(**LOCAL_DB_CONFIG)
+        conn_test.close()
+    except Error as e:
+        messagebox.showerror("Database Connection Error",
+                             f"Cannot connect to MySQL:\n{e}")
+        exit(1)
+
+    app = CyberDashboard()
+    app.mainloop()
