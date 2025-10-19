@@ -1,0 +1,109 @@
+# ==============================
+# Java / Maven
+# ==============================
+/target/
+*.class
+*.jar
+*.war
+*.iml
+/.idea/
+*.log
+*.out
+*.db
+*.DS_Store
+
+# Maven specific
+.mvn/
+.settings/
+*.ipr
+*.iws
+*.classpath
+
+# ==============================
+# Python
+# ==============================
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+pip-log.txt
+*.sqlite3
+
+# Python virtual environment folders
+.env/
+.env.bak/
+.venv/
+python_env/
+myenv/
+
+# ==============================
+# AI Models / Data Files
+# ==============================
+*.h5
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.sav
+
+# JSON and data generated automatically
+potholes_data.json
+road_data.json
+dashboard_data.json
+*.csv
+*.npy
+*.npz
+
+# Processed / temporary data
+image-analytics-python/processed_images/
+uploads/
+tmp/
+cache/
+
+# ==============================
+# Frontend / Node.js
+# ==============================
+node_modules/
+dist/
+*.cache
+*.tmp
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+debug.log
+nohup.out
+
+# ==============================
+# OS / IDE
+# ==============================
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+*.bak
+
+# ==============================
+# Environment / Secrets
+# ==============================
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+credentials.json
+secrets.json
+
+# ==============================
+# Miscellaneous
+# ==============================
+*.bak
+*.orig
+*.tmp

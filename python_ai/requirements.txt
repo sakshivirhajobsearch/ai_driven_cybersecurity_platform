@@ -1,0 +1,5 @@
+numpy
+pandas
+scikit-learn
+mysql-connector-python
+twilio  # optional, only if you plan to send SMS alerts
