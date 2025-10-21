@@ -1,98 +1,50 @@
-# auto_sync.py
+# =====================================================
+# File: auto_sync.py
+# Purpose: Periodic sync between local and central MySQL
+# =====================================================
+
 import time
+import mysql.connector
 from datetime import datetime
-from database.ai_driven_cybersecurity_platform_local import insert_local, fetch_unsynced_local
-from database.ai_driven_cybersecurity_platform_central import insert_central, fetch_central
-from notifiers.sms_notifier import send_sms
-from notifiers.email_notifier import send_email
-import pymysql
+from config import MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, SYNC_INTERVAL_SECONDS, LOG_FILE
 
-# --- CONFIGURATION ---
-SYNC_INTERVAL_SECONDS = 3600  # hourly
-SECURITY_EMAIL = "security@company.com"
-SECURITY_PHONE = "+911234567890"
-
-# Database credentials
-LOCAL_DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "admin",
-    "database": "ai_driven_cybersecurity_platform_local"
-}
-
-CENTRAL_DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "admin",
-    "database": "ai_driven_cybersecurity_platform_central"
-}
-
-def connect_db(config):
-    return pymysql.connect(
-        host=config["host"],
-        user=config["user"],
-        password=config["password"],
-        database=config["database"],
-        cursorclass=pymysql.cursors.DictCursor
+def connect_db():
+    return mysql.connector.connect(
+        host=MYSQL_HOST,
+        user=MYSQL_USER,
+        password=MYSQL_PASSWORD,
+        database=MYSQL_DATABASE
     )
 
-def sync_table(table_name, local_conn, central_conn):
-    """
-    Sync one table from Local -> Central
-    """
-    with local_conn.cursor() as lcur, central_conn.cursor() as ccur:
-        lcur.execute(f"SELECT * FROM {table_name} WHERE synced = FALSE")
-        rows = lcur.fetchall()
-        synced_count = 0
-        for row in rows:
-            columns = ", ".join(row.keys())
-            placeholders = ", ".join(["%s"] * len(row))
-            update_keys = ", ".join([f"{k}=VALUES({k})" for k in row.keys()])
-            sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders}) " \
-                  f"ON DUPLICATE KEY UPDATE {update_keys}"
-            try:
-                ccur.execute(sql, list(row.values()))
-                synced_count += 1
-            except Exception as e:
-                print(f"[{table_name}] Error inserting row: {e}")
-            # Mark local as synced
-            update_sql = f"UPDATE {table_name} SET synced = TRUE WHERE {list(row.keys())[0]} = %s"
-            lcur.execute(update_sql, (row[list(row.keys())[0]],))
-        return synced_count
+def log(message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {message}\n")
 
-def log_sync_status(local_conn, table_name, count):
-    with local_conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO sync_status (table_name, last_synced, status) VALUES (%s, %s, %s)",
-            (table_name, datetime.now(), f"Synced {count} records")
-        )
-    local_conn.commit()
+def sync_table(cursor, table_name):
+    cursor.execute(f"UPDATE {table_name} SET synced=TRUE WHERE synced=FALSE;")
+    log(f"✅ Synced new entries for table: {table_name}")
 
-def main():
-    print("Starting Python auto-sync service...")
-    while True:
-        local_conn = connect_db(LOCAL_DB_CONFIG)
-        central_conn = connect_db(CENTRAL_DB_CONFIG)
-        tables = ["local_threats", "ai_model_logs", "alerts", "remediation_actions",
-                  "system_health", "threat_events", "users"]
-        total_synced = 0
-        for table in tables:
-            count = sync_table(table, local_conn, central_conn)
-            log_sync_status(local_conn, table, count)
-            total_synced += count
-        # Commit all
-        central_conn.commit()
-        local_conn.commit()
+def run_sync_cycle():
+    conn = connect_db()
+    cursor = conn.cursor()
 
-        # Send notification
-        message = f"[{datetime.now()}] Auto-sync completed. Total records synced: {total_synced}"
-        send_sms(message, SECURITY_PHONE)
-        send_email("AI Cybersecurity Sync Summary", message, SECURITY_EMAIL)
+    try:
+        sync_table(cursor, "threat_events")
+        sync_table(cursor, "remediation_actions")
+        sync_table(cursor, "alerts")
 
-        print(message)
-        local_conn.close()
-        central_conn.close()
-        time.sleep(SYNC_INTERVAL_SECONDS)
+        conn.commit()
+        log("🔄 Sync completed successfully.")
+    except Exception as e:
+        log(f"❌ Sync error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 
 if __name__ == "__main__":
-    main()
+    log("=== Starting Auto Sync Service ===")
+    while True:
+        run_sync_cycle()
+        time.sleep(SYNC_INTERVAL_SECONDS)

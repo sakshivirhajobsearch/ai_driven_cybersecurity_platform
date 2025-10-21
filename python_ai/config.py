@@ -1,25 +1,26 @@
+# =====================================================
+# File: config.py
+# Purpose: Centralized configuration for SOC AI platform
+# =====================================================
+
 import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# -----------------------------
+# MySQL Connection Configuration
+# -----------------------------
+MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "admin")  # <-- Update this
+MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "soc_ai_platform")
 
-MODEL_PATH = os.path.join(BASE_DIR, "models", "cyber_model.pkl")
-SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
-TABLE_EVENTS = "threat_events"
+# -----------------------------
+# Sync Configuration
+# -----------------------------
+SYNC_INTERVAL_SECONDS = int(os.getenv("SYNC_INTERVAL_SECONDS", 60))  # Every 60 seconds
+LOG_FILE = os.getenv("LOG_FILE", "auto_sync.log")
 
-THREAT_CLASSES = ["benign", "phishing", "malware", "ddos", "insider"]
-
-MYSQL_LOCAL = {
-    "host": "localhost",
-    "user": "ai_user",
-    "password": "StrongPassword123",
-    "database": "ai_driven_cybersecurity_local",
-    "auth_plugin": "mysql_native_password"
-}
-
-MYSQL_CENTRAL = {
-    "host": "localhost",
-    "user": "ai_user",
-    "password": "StrongPassword123",
-    "database": "ai_driven_cybersecurity_central",
-    "auth_plugin": "mysql_native_password"
-}
+# -----------------------------
+# Notification Configuration
+# -----------------------------
+EMAIL_ALERTS_ENABLED = True
+SMS_ALERTS_ENABLED = True

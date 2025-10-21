@@ -42,7 +42,23 @@ SELECT COUNT(*) AS unsynced_events FROM threat_events WHERE synced=FALSE;
 SELECT COUNT(*) AS unsynced_actions FROM remediation_actions WHERE synced=FALSE;
 SELECT COUNT(*) AS unsynced_alerts FROM alerts WHERE synced=FALSE;
 
+USE soc_ai_platform;
+
+-- Get recent threats
+SELECT * FROM threat_events ORDER BY detected_at DESC LIMIT 10;
+
+-- Get latest alerts
+SELECT * FROM alerts ORDER BY created_at DESC LIMIT 10;
+
+-- Get recent remediation actions
+SELECT * FROM remediation_actions ORDER BY performed_at DESC LIMIT 10;
+
+-- Get system health snapshot
+SELECT * FROM system_health ORDER BY checked_at DESC LIMIT 5;
+
+
 USE ai_driven_cybersecurity_platform_local;
+
 SELECT * FROM ai_model_logs;                                
 SELECT * FROM alerts;
 SELECT * FROM local_threats;
@@ -53,6 +69,7 @@ SELECT * FROM threat_events;
 SELECT * FROM users;
 
 USE ai_driven_cybersecurity_platform_central;
+
 SELECT * FROM ai_model_logs;                                
 SELECT * FROM alerts;
 SELECT * FROM local_threats;
@@ -62,3 +79,7 @@ SELECT * FROM system_health;
 SELECT * FROM threat_events;
 SELECT * FROM users;
 
+USE soc_ai_platform;
+
+SELECT * FROM threats;
+SELECT * FROM alerts;

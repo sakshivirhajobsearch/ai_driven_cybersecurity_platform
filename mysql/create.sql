@@ -107,3 +107,74 @@ ALTER TABLE remediation_actions ADD UNIQUE (id);
 ALTER TABLE system_health ADD UNIQUE (id);
 ALTER TABLE threat_events ADD UNIQUE (id);
 ALTER TABLE users ADD UNIQUE (id);
+
+
+CREATE DATABASE IF NOT EXISTS soc_ai_platform;
+USE soc_ai_platform;
+
+-- ======================
+-- Table: threat_events
+-- ======================
+CREATE TABLE IF NOT EXISTS threat_events (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    event_name VARCHAR(255),
+    threat_type ENUM('Internal', 'External'),
+    severity ENUM('Low', 'Medium', 'High', 'Critical'),
+    source_ip VARCHAR(45),
+    destination_ip VARCHAR(45),
+    detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ai_confidence FLOAT,
+    risk_score FLOAT,
+    status VARCHAR(50),
+    synced BOOLEAN DEFAULT 0
+);
+
+-- ======================
+-- Table: alerts
+-- ======================
+CREATE TABLE IF NOT EXISTS alerts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    alert_message VARCHAR(255),
+    alert_type VARCHAR(50),
+    threat_id INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    synced BOOLEAN DEFAULT 0,
+    FOREIGN KEY (threat_id) REFERENCES threat_events(id)
+);
+
+-- ======================
+-- Table: system_health
+-- ======================
+CREATE TABLE IF NOT EXISTS system_health (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cpu_usage FLOAT,
+    memory_usage FLOAT,
+    disk_usage FLOAT,
+    network_latency_ms FLOAT,
+    checked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ======================
+-- Table: remediation_actions
+-- ======================
+CREATE TABLE IF NOT EXISTS remediation_actions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    threat_id INT,
+    action_taken VARCHAR(255),
+    performed_by VARCHAR(100),
+    result ENUM('Success', 'Failure', 'Pending') DEFAULT 'Pending',
+    performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    synced BOOLEAN DEFAULT 0,
+    FOREIGN KEY (threat_id) REFERENCES threat_events(id)
+);
+
+-- ======================
+-- Table: threats (summary)
+-- ======================
+CREATE TABLE IF NOT EXISTS threats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255),
+    category VARCHAR(100),
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
