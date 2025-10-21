@@ -1,168 +1,236 @@
-# dashboard/dashboard.py
-import tkinter as tk
-from tkinter import ttk, messagebox
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+# python/dashboard/dashboard.py
+"""
+Dash dashboard for SOC platform.
+Requirements:
+ - Place alert.mp3 in python/dashboard/assets/alert.mp3 (optional)
+ - Uses Dash >= 3, dash_bootstrap_components
+"""
+
+import dash
+from dash import dcc, html, dash_table
+from dash.dependencies import Input, Output, State
+import dash_bootstrap_components as dbc
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
+import plotly.express as px
+import socket
+import os
 
-# ===============================
-# CONFIGURATION
-# ===============================
-REFRESH_INTERVAL_MS = 60000  # 1 minute
-LOCAL_DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',         # Replace with your MySQL user
-    'password': 'admin', # Replace with your MySQL password
-    'database': 'ai_driven_cybersecurity_platform_local'
+# -------------------------
+# CONFIG
+# -------------------------
+DB_CONFIG = {
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": os.environ.get("DB_PASS", "admin"),
+    "database": os.environ.get("DB_NAME", "ai_driven_cybersecurity_platform_local")
 }
 
-# ===============================
-# DATABASE FUNCTIONS
-# ===============================
-def fetch_data(query, columns):
+REFRESH_INTERVAL_SECONDS = int(os.environ.get("REFRESH_INTERVAL", 60))
+
+# -------------------------
+# Helper: Fetch SQL -> DataFrame (defensive)
+# -------------------------
+def fetch_query(query, params=None):
     try:
-        conn = mysql.connector.connect(**LOCAL_DB_CONFIG)
-        df = pd.read_sql(query, conn)
+        conn = mysql.connector.connect(**DB_CONFIG)
+        df = pd.read_sql(query, conn, params=params)
         conn.close()
         return df
-    except Error as e:
-        print(f"Database error: {e}")
-        return pd.DataFrame(columns=columns)
+    except Exception as e:
+        print("Database error:", e)
+        return pd.DataFrame()
 
-def get_event_data():
-    query = """
-        SELECT event_type, threat_category, COUNT(*) AS count
-        FROM events
-        GROUP BY event_type, threat_category
-    """
-    return fetch_data(query, ['event_type', 'threat_category', 'count'])
+# -------------------------
+# App init
+# -------------------------
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+app.title = "SOC AI Dashboard"
 
-def get_risk_score_data():
-    query = "SELECT AVG(risk_score) AS avg_risk FROM events"
-    return fetch_data(query, ['avg_risk'])
+# Layout includes a dcc.Store to keep last_seen_alert_id
+app.layout = dbc.Container(fluid=True, children=[
+    dcc.Interval(id="auto-refresh", interval=REFRESH_INTERVAL_SECONDS*1000, n_intervals=0),
+    dcc.Store(id="last-seen-alert-id", data=0),
+    html.Audio(id="alert-sound", src="/assets/alert.mp3", autoPlay=False),
+    html.H1("🛡️ SOC AI Dashboard", className="text-center mt-3 mb-2 text-info"),
 
-def get_latest_alerts(limit=10):
-    query = f"""
-        SELECT timestamp, event_type, threat_category, risk_score, alert_sent
-        FROM events
-        ORDER BY timestamp DESC
-        LIMIT {limit}
-    """
-    return fetch_data(query, ['timestamp','event_type','threat_category','risk_score','alert_sent'])
+    html.Div(id="system-stats", className="mb-3"),
 
-# ===============================
-# DASHBOARD CLASS
-# ===============================
-class CyberDashboard(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("SOC Cybersecurity Dashboard")
-        self.geometry("1000x700")
+    dbc.Row([
+        dbc.Col(dcc.Graph(id="severity-chart"), md=6),
+        dbc.Col(dcc.Graph(id="threat-type-chart"), md=6)
+    ]),
 
-        # --- Risk Score ---
-        self.risk_label = tk.Label(self, text="Avg Risk: N/A", font=("Helvetica", 36, "bold"), fg="red")
-        self.risk_label.pack(pady=10)
+    html.H4("Latest Alerts", className="text-warning mt-4"),
+    html.Div(id="alerts-table"),
 
-        # --- Threat Chart ---
-        self.chart_frame = tk.Frame(self)
-        self.chart_frame.pack(fill=tk.BOTH, expand=True)
-        self.fig, self.ax = plt.subplots(figsize=(10,5))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    html.H4("System Health", className="text-success mt-4"),
+    html.Div(id="health-table"),
 
-        # --- Latest Alerts Table ---
-        self.table_frame = tk.Frame(self)
-        self.table_frame.pack(fill=tk.X, pady=10)
-        self.tree = ttk.Treeview(self.table_frame)
-        self.tree.pack(fill=tk.X)
-        self.columns = ['timestamp','event_type','threat_category','risk_score','alert_sent']
-        self.tree["columns"] = self.columns
-        for col in self.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=160, anchor='center')
-        self.tree["show"] = "headings"
+    # Live toast area (we only show one toast at a time; new critical alerts update this)
+    dbc.Toast(id="live-toast",
+              header="",
+              is_open=False,
+              dismissable=True,
+              duration=10000,
+              style={"position": "fixed", "top": 20, "right": 20, "width": 420, "zIndex": 9999})
+])
 
-        # Define tag styles for risk severity
-        self.tree.tag_configure('high', background='#ff4d4d')    # red
-        self.tree.tag_configure('medium', background='#fff066')  # yellow
-        self.tree.tag_configure('low', background='#66ff66')     # green
+# -------------------------
+# Callback: Refresh everything and manage toast + sound
+# -------------------------
+@app.callback(
+    Output("system-stats", "children"),
+    Output("severity-chart", "figure"),
+    Output("threat-type-chart", "figure"),
+    Output("alerts-table", "children"),
+    Output("health-table", "children"),
+    Output("live-toast", "is_open"),
+    Output("live-toast", "header"),
+    Output("live-toast", "children"),
+    Output("alert-sound", "autoPlay"),
+    Output("last-seen-alert-id", "data"),
+    Input("auto-refresh", "n_intervals"),
+    State("last-seen-alert-id", "data")
+)
+def refresh_dashboard(n, last_seen_id):
+    # Fetch latest data
+    threats_df = fetch_query("SELECT id, threat_type, description, severity_level, ai_confidence, source_ip, target_system, detected_at FROM threat_events ORDER BY detected_at DESC LIMIT 200;")
+    alerts_df = fetch_query("SELECT id, alert_type, message, IFNULL(severity, 'Low') AS severity, created_at FROM alerts ORDER BY created_at DESC LIMIT 50;")
+    system_df = fetch_query("SELECT id, component, status, checked_at FROM system_health ORDER BY checked_at DESC LIMIT 20;")
 
-        # Start updating dashboard
-        self.update_dashboard()
+    # Normalize column names (ensure lower)
+    threats_df.columns = [c if c is None else c for c in threats_df.columns]
 
-    def update_dashboard(self):
-        # --- Update Risk Score ---
-        risk_df = get_risk_score_data()
-        if not risk_df.empty and pd.notna(risk_df['avg_risk'][0]):
-            avg_risk = round(risk_df['avg_risk'][0], 2)
-            self.risk_label.config(text=f"Avg Risk: {avg_risk}")
-        else:
-            self.risk_label.config(text="Avg Risk: N/A")
+    # Defensive counters
+    total_threats = len(threats_df)
+    high_conf = 0
+    critical = 0
+    insider_threats = 0
+    external_threats = 0
 
-        # --- Update Threat Chart ---
-        event_df = get_event_data()
-        self.ax.clear()
-        if not event_df.empty:
-            categories = event_df['threat_category'].unique()
-            bar_width = 0.3
-            event_types = sorted(event_df['event_type'].unique())
-            x_positions = range(len(event_types))
-            offsets = [-bar_width/2, bar_width/2] if len(categories)==2 else [0]*len(categories)
-            event_type_to_pos = {etype: i for i, etype in enumerate(event_types)}
-
-            for i, cat in enumerate(categories):
-                subset = event_df[event_df['threat_category'] == cat]
-                positions = [event_type_to_pos[etype] + offsets[i] for etype in subset['event_type']]
-                self.ax.bar(positions, subset['count'], width=bar_width, label=cat)
-
-            self.ax.set_xticks(list(event_type_to_pos.values()))
-            self.ax.set_xticklabels(list(event_type_to_pos.keys()), fontsize=14)
-            self.ax.set_title("Internal vs External Threats", fontsize=20, fontweight='bold')
-            self.ax.set_ylabel("Count", fontsize=16)
-            self.ax.tick_params(axis='y', labelsize=14)
-            self.ax.legend(fontsize=14)
-        else:
-            self.ax.text(0.5, 0.5, 'No event data', ha='center', va='center', fontsize=16)
-        self.canvas.draw()
-
-        # --- Update Latest Alerts Table ---
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-        alerts_df = get_latest_alerts(limit=10)
-        if not alerts_df.empty:
-            for _, row in alerts_df.iterrows():
-                # Determine severity tag
+    if not threats_df.empty:
+        if "ai_confidence" in threats_df.columns:
+            try:
+                high_conf = threats_df[threats_df["ai_confidence"].astype(float) > 0.8].shape[0]
+            except Exception:
+                high_conf = 0
+        if "severity_level" in threats_df.columns:
+            critical = threats_df[threats_df["severity_level"].astype(str).str.lower() == "critical"].shape[0]
+        # If there is a source_type or differentiate by threat_type for internal vs external:
+        if "source_ip" in threats_df.columns:
+            # crude heuristic: private IPs -> internal, else external (customize as needed)
+            def ip_is_private(ip):
+                if not ip: return False
                 try:
-                    risk = float(row['risk_score'])
-                except:
-                    risk = 0
-                if risk >= 7:
-                    tag = 'high'
-                elif risk >= 4:
-                    tag = 'medium'
-                else:
-                    tag = 'low'
-                self.tree.insert("", tk.END, values=(
-                    row['timestamp'], row['event_type'], row['threat_category'], row['risk_score'], row['alert_sent']
-                ), tags=(tag,))
+                    parts = ip.split(".")
+                    if len(parts) != 4: return False
+                    a,b = int(parts[0]), int(parts[1])
+                    # 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+                    if a == 10: return True
+                    if a == 192 and b == 168: return True
+                    if a == 172 and 16 <= b <= 31: return True
+                except Exception:
+                    return False
+                return False
+            insider_threats = threats_df[threats_df["source_ip"].apply(lambda x: ip_is_private(str(x)))].shape[0]
+            external_threats = total_threats - insider_threats
 
-        # Schedule next update
-        self.after(REFRESH_INTERVAL_MS, self.update_dashboard)
+    # Build stats summary
+    stats = html.Div([
+        html.H5(f"Total Threats: {total_threats}  |  Critical: {critical}  |  High Confidence: {high_conf}  |  Internal: {insider_threats}  |  External: {external_threats}",
+                className="text-light text-center")
+    ])
 
-# ===============================
-# RUN DASHBOARD
-# ===============================
+    # Severity chart
+    if not threats_df.empty and "severity_level" in threats_df.columns:
+        severity_counts = threats_df.groupby("severity_level").size().reset_index(name="count")
+        fig_severity = px.bar(severity_counts, x="severity_level", y="count", title="Threats by Severity", text_auto=True)
+    else:
+        fig_severity = px.bar(title="Threats by Severity (no data)")
+
+    # Internal vs External pie
+    if total_threats > 0:
+        pie_df = pd.DataFrame({
+            "type": ["Internal", "External"],
+            "count": [insider_threats, external_threats]
+        })
+        fig_threat_type = px.pie(pie_df, names="type", values="count", title="Internal vs External Threats")
+    else:
+        fig_threat_type = px.pie(title="Internal vs External Threats")
+
+    # Alerts table
+    if not alerts_df.empty:
+        alerts_df["created_at"] = alerts_df["created_at"].astype(str)
+        table_alerts = dash_table.DataTable(
+            data=alerts_df.to_dict("records"),
+            columns=[{"name": i, "id": i} for i in alerts_df.columns],
+            style_cell={"textAlign": "center", "fontSize": 16},
+            style_data_conditional=[
+                {"if": {"filter_query": '{severity} = "High"'}, "backgroundColor": "#FF7F7F"},
+                {"if": {"filter_query": '{severity} = "Medium"'}, "backgroundColor": "#FFF68F"},
+                {"if": {"filter_query": '{severity} = "Low"'}, "backgroundColor": "#90EE90"}
+            ],
+            page_size=10
+        )
+    else:
+        table_alerts = html.P("No alerts found.", className="text-muted")
+
+    # System health table
+    if not system_df.empty:
+        system_df["checked_at"] = system_df["checked_at"].astype(str)
+        table_health = dash_table.DataTable(
+            data=system_df.to_dict("records"),
+            columns=[{"name": i, "id": i} for i in system_df.columns],
+            style_cell={"textAlign": "center", "fontSize": 16},
+            style_data_conditional=[
+                {"if": {"filter_query": '{status} = "ERROR"'}, "backgroundColor": "#FF6347"},
+                {"if": {"filter_query": '{status} = "WARNING"'}, "backgroundColor": "#FFD700"},
+                {"if": {"filter_query": '{status} = "OK"'}, "backgroundColor": "#90EE90"}
+            ],
+            page_size=10
+        )
+    else:
+        table_health = html.P("No system health data.", className="text-muted")
+
+    # Toast / Sound detection: look for newest high-severity alert id
+    toast_open = False
+    toast_header = ""
+    toast_body = ""
+    play_sound = False
+    if not alerts_df.empty and "severity" in alerts_df.columns:
+        # Find the newest high severity alert
+        high_alerts = alerts_df[alerts_df["severity"].astype(str).str.lower().isin(["high", "critical"])]
+        if not high_alerts.empty:
+            latest_high = high_alerts.iloc[0]  # newest due to ORDER BY
+            try:
+                latest_id = int(latest_high["id"])
+            except Exception:
+                latest_id = last_seen_id or 0
+            if latest_id > (last_seen_id or 0):
+                # New critical alert found
+                toast_open = True
+                toast_header = f"{latest_high.get('alert_type','Alert')} — {latest_high.get('severity','')}"
+                toast_body = html.Div([
+                    html.P(latest_high.get("message", ""), className="text-light"),
+                    html.Small(f"Time: {latest_high.get('created_at','')}", className="text-secondary")
+                ])
+                play_sound = True
+                last_seen_id = latest_id
+
+    # Return all outputs
+    return stats, fig_severity, fig_threat_type, table_alerts, table_health, toast_open, toast_header, toast_body, play_sound, last_seen_id
+
+# -------------------------
+# Run
+# -------------------------
 if __name__ == "__main__":
-    # Test DB connection first
+    hostname = socket.gethostname()
     try:
-        conn_test = mysql.connector.connect(**LOCAL_DB_CONFIG)
-        conn_test.close()
-    except Error as e:
-        messagebox.showerror("Database Connection Error",
-                             f"Cannot connect to MySQL:\n{e}")
-        exit(1)
-
-    app = CyberDashboard()
-    app.mainloop()
+        local_ip = socket.gethostbyname(hostname)
+    except Exception:
+        local_ip = "127.0.0.1"
+    print(f"Dashboard running locally at http://127.0.0.1:8051")
+    print(f"Dashboard running on LAN at http://{local_ip}:8051")
+    app.run(host="0.0.0.0", port=8051, debug=False)

@@ -1,37 +1,37 @@
-import os
-import pickle
-from sklearn.preprocessing import StandardScaler
+# python/models/train.py
+"""
+Example training script to build a RandomForestClassifier and scaler.
+Requires: training_events.csv with numeric features and 'label' column.
+Produces model.pkl and scaler.pkl in python/models/
+"""
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from joblib import dump
+import os
 
-models_dir = os.path.dirname(__file__)
-os.makedirs(models_dir, exist_ok=True)
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-print("==== Training ML model ====")
+CSV = os.path.join(os.path.dirname(__file__), "..", "training_events.csv")
 
-# Simulated dataset
-X, y = make_classification(n_samples=1000, n_features=20, n_informative=15, n_classes=2, random_state=42)
-
-# Preprocessing
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-print("✅ Data scaled using StandardScaler.")
-
-# Train model
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_scaled, y)
-print("✅ RandomForestClassifier trained.")
-
-# Save scaler
-scaler_path = os.path.join(models_dir, "scaler.pkl")
-with open(scaler_path, "wb") as f:
-    pickle.dump(scaler, f)
-print(f"✅ Scaler saved at: {scaler_path}")
-
-# Save model
-model_path = os.path.join(models_dir, "model.pkl")
-with open(model_path, "wb") as f:
-    pickle.dump(model, f)
-print(f"✅ Model saved at: {model_path}")
-
-print("==== ML training complete ====")
+if not os.path.exists(CSV):
+    print("No training_events.csv found at", CSV)
+    print("Create a CSV with numeric columns and a 'label' column to train.")
+else:
+    df = pd.read_csv(CSV)
+    if "label" not in df.columns:
+        raise SystemExit("training_events.csv must contain a 'label' column.")
+    X = df.drop(columns=["label"])
+    y = df["label"]
+    scaler = StandardScaler().fit(X)
+    Xs = scaler.transform(X)
+    X_train, X_test, y_train, y_test = train_test_split(Xs, y, test_size=0.2, random_state=42)
+    clf = RandomForestClassifier(n_estimators=200, random_state=42)
+    clf.fit(X_train, y_train)
+    print("Train score:", clf.score(X_train, y_train))
+    print("Test score:", clf.score(X_test, y_test))
+    dump(clf, os.path.join(MODEL_DIR, "model.pkl"))
+    dump(scaler, os.path.join(MODEL_DIR, "scaler.pkl"))
+    print("Saved model and scaler to", MODEL_DIR)

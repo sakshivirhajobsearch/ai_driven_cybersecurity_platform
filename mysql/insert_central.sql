@@ -1,13 +1,6 @@
--- =====================================================
--- File: insert_central.sql
--- Purpose: Insert dummy/test data for Central DB
--- =====================================================
-
+-- insert_central.sql
 USE ai_driven_cybersecurity_platform_central;
 
--- -----------------------
--- Central threats (match local_threats)
--- -----------------------
 INSERT INTO central_threats (threat_id, threat_type, severity_level, source_ip, target_system, detected_at, handled)
 VALUES
 (1,'Phishing', 'High', '192.168.1.10', 'Server1', NOW(), FALSE),
@@ -21,9 +14,6 @@ VALUES
 (9,'Ransomware', 'Critical', '192.168.1.90', 'Server9', NOW(), FALSE),
 (10,'Zero-Day', 'Critical', '192.168.1.100', 'Server10', NOW(), FALSE);
 
--- -----------------------
--- Users
--- -----------------------
 INSERT INTO users (id, username, email, role, created_at)
 VALUES
 (1,'alice','alice@example.com','Admin', NOW()),
@@ -37,9 +27,6 @@ VALUES
 (9,'ivan','ivan@example.com','Admin', NOW()),
 (10,'judy','judy@example.com','Analyst', NOW());
 
--- -----------------------
--- AI model logs
--- -----------------------
 INSERT INTO ai_model_logs (id, model_name, action_taken, log_time)
 VALUES
 (1,'ThreatClassifierV1','Analyzed sample event', NOW()),
@@ -53,25 +40,19 @@ VALUES
 (9,'ThreatClassifierV2','Zero-Day vulnerability flagged', NOW()),
 (10,'ThreatClassifierV1','System anomaly detected', NOW());
 
--- -----------------------
--- Alerts
--- -----------------------
-INSERT INTO alerts (id, alert_type, message, created_at)
+INSERT INTO alerts (id, alert_type, message, created_at, severity)
 VALUES
-(1,'Email','Phishing detected for user alice', NOW()),
-(2,'SMS','Critical threat detected on Server3', NOW()),
-(3,'Email','Malware detected on Server2', NOW()),
-(4,'SMS','Ransomware detected on Server9', NOW()),
-(5,'Email','SQL Injection attack on Server6', NOW()),
-(6,'SMS','DDoS attack on Server5', NOW()),
-(7,'Email','Insider threat on Server4', NOW()),
-(8,'SMS','Zero-Day vulnerability detected on Server10', NOW()),
-(9,'Email','Firewall anomaly detected', NOW()),
-(10,'SMS','SIEM system warning', NOW());
+(1,'Email','Phishing detected for user alice', NOW(),'High'),
+(2,'SMS','Critical threat detected on Server3', NOW(),'High'),
+(3,'Email','Malware detected on Server2', NOW(),'Medium'),
+(4,'SMS','Ransomware detected on Server9', NOW(),'High'),
+(5,'Email','SQL Injection attack on Server6', NOW(),'High'),
+(6,'SMS','DDoS attack on Server5', NOW(),'High'),
+(7,'Email','Insider threat on Server4', NOW(),'Medium'),
+(8,'SMS','Zero-Day vulnerability detected on Server10', NOW(),'High'),
+(9,'Email','Firewall anomaly detected', NOW(),'Medium'),
+(10,'SMS','SIEM system warning', NOW(),'Low');
 
--- -----------------------
--- Remediation actions
--- -----------------------
 INSERT INTO remediation_actions (id, threat_id, action, executed_at)
 VALUES
 (1,1,'Quarantine user account', NOW()),
@@ -85,9 +66,6 @@ VALUES
 (9,9,'Apply ransomware recovery plan', NOW()),
 (10,10,'Deploy zero-day mitigation', NOW());
 
--- -----------------------
--- System health
--- -----------------------
 INSERT INTO system_health (id, component, status, checked_at)
 VALUES
 (1,'Firewall','OK', NOW()),
@@ -101,9 +79,6 @@ VALUES
 (9,'Intrusion Detection','ERROR', NOW()),
 (10,'Backup System','OK', NOW());
 
--- -----------------------
--- Threat events
--- -----------------------
 INSERT INTO threat_events (id, threat_type, description, detected_at, severity_level, ai_confidence, source_ip, target_system)
 VALUES
 (1,'Phishing','Email phishing attempt', NOW(),'High',0.85,'192.168.1.10','Server1'),
