@@ -12,14 +12,12 @@ import jakarta.mail.internet.MimeMessage;
 
 public class EmailNotifier {
 
-	// --- CONFIGURATION ---
-	private static final String SMTP_HOST = "smtp.yourmail.com";
+	private static final String SMTP_HOST = "smtp.mail.yahoo.com";
 	private static final String SMTP_PORT = "587"; // TLS
-	private static final String SMTP_USER = "your_email@domain.com";
-	private static final String SMTP_PASSWORD = "your_email_password";
-	private static final String FROM_EMAIL = "your_email@domain.com";
+	private static final String SMTP_USER = "sunayanasamanjobsearch@yahoo.com";
+	private static final String SMTP_PASSWORD = "mzuywktaofjamcpo"; // Use App Password
+	private static final String FROM_EMAIL = SMTP_USER;
 
-	// Static method to send email
 	public static void sendEmail(String subject, String body, String toEmail) {
 		try {
 			Properties props = new Properties();
@@ -41,9 +39,11 @@ public class EmailNotifier {
 			message.setText(body);
 
 			Transport.send(message);
-			System.out.println("Email sent successfully to " + toEmail);
+			System.out.println("✅ Email sent successfully to " + toEmail);
+
 		} catch (Exception e) {
-			System.err.println("Error sending email: " + e.getMessage());
+			e.printStackTrace(); // Print full stacktrace for debugging
+			System.err.println("❌ Error sending email: " + e.getMessage());
 		}
 	}
 }
