@@ -32,36 +32,13 @@ __pycache__/
 pip-log.txt
 *.sqlite3
 
-# Python virtual environment folders
-.env/
-.env.bak/
-.venv/
-python_env/
-myenv/
-
-# ==============================
-# AI Models / Data Files
-# ==============================
-*.h5
-*.pt
-*.pth
-*.pkl
-*.joblib
-*.sav
-
-# JSON and data generated automatically
-potholes_data.json
-road_data.json
-dashboard_data.json
-*.csv
-*.npy
-*.npz
-
-# Processed / temporary data
+# Processed Images (optional)
 image-analytics-python/processed_images/
+
+# ==============================
+# Uploads
+# ==============================
 uploads/
-tmp/
-cache/
 
 # ==============================
 # Frontend / Node.js
@@ -72,38 +49,14 @@ dist/
 *.tmp
 
 # ==============================
-# Logs
-# ==============================
-*.log
-logs/
-debug.log
-nohup.out
-
-# ==============================
 # OS / IDE
 # ==============================
 *.swp
 *.swo
 Thumbs.db
 .DS_Store
-.vscode/
-.idea/
-*.bak
 
 # ==============================
-# Environment / Secrets
+# Environment variables
 # ==============================
 .env
-.env.local
-.env.development
-.env.production
-.env.test
-credentials.json
-secrets.json
-
-# ==============================
-# Miscellaneous
-# ==============================
-*.bak
-*.orig
-*.tmp
