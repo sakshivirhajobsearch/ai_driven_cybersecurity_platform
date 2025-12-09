@@ -19,7 +19,7 @@ No description provided.
 
 ## 🧠 Tech Stack Used
 
-- **Detected Technologies:** Batchfile, Java, PowerShell, Python
+- **Detected Technologies:** Python, Java (Maven/Gradle), Flask, scikit-learn, MySQL
 - **GitHub Topics:** None
 
 ---
